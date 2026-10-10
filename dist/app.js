@@ -2,9 +2,10 @@
   "use strict";
 
   const STORAGE_KEY = "malsseum-itgi-progress-v1";
-  const VALID_VIEWS = new Set(["learn", "meaning", "blank", "syllable", "progress"]);
+  const VALID_VIEWS = new Set(["learn", "people", "meaning", "blank", "syllable", "progress"]);
   const VIEW_TITLES = {
     learn: "단어 학습",
+    people: "성경 인물",
     meaning: "뜻 맞히기",
     blank: "말씀 암송",
     syllable: "음절 퍼즐",
@@ -35,6 +36,8 @@
   let dailyWords = [];
   let activeView = readHash();
   let learnIndex = 0;
+  let activePersonTestament = "전체";
+  let personSearchQuery = "";
   let meaningQuestion = null;
   let meaningMode = "definition";
   let blankQuestion = null;
@@ -310,6 +313,7 @@
     if (!dataset) return;
     const renderers = {
       learn: renderLearn,
+      people: renderPeople,
       meaning: renderMeaning,
       blank: renderBlank,
       syllable: renderSyllable,
@@ -542,6 +546,72 @@
     document.querySelector("#random-word").addEventListener("click", () => {
       learnIndex = (learnIndex + 1) % dailyWords.length;
       renderLearn();
+    });
+  }
+
+  function renderPeople() {
+    const people = words.filter((word) => word.category === "성경 인물");
+    const learnedPeople = people.filter((person) => progress.learned.includes(person.id)).length;
+    const search = personSearchQuery.trim().toLocaleLowerCase("ko-KR");
+    const filteredPeople = people.filter((person) => {
+      const matchesTestament = activePersonTestament === "전체" || person.testament === activePersonTestament;
+      const matchesSearch = !search || `${person.term} ${person.reference}`.toLocaleLowerCase("ko-KR").includes(search);
+      return matchesTestament && matchesSearch;
+    });
+
+    viewRoot.innerHTML = `
+      ${headerTemplate("인물 학습", "성경 인물을 만나요", "이름과 이야기를 읽고 대표 구절을 열어 성경 속 인물을 알아보세요.")}
+      <div class="person-toolbar">
+        <div class="person-testament-tabs" role="tablist" aria-label="성경 시대 선택">
+          ${["전체", "구약", "신약"].map((testament) => `<button class="person-filter-button${activePersonTestament === testament ? " is-active" : ""}" type="button" role="tab" aria-selected="${activePersonTestament === testament}" data-person-testament="${testament}">${testament}</button>`).join("")}
+        </div>
+        <label class="person-search-label">
+          <span class="sr-only">인물 이름 검색</span>
+          <input class="person-search-input" id="person-search" type="search" value="${escapeHtml(personSearchQuery)}" placeholder="인물 이름 검색" autocomplete="off" />
+        </label>
+      </div>
+      <p class="person-result-count" role="status">${filteredPeople.length}명 · ${learnedPeople}/${people.length}명 학습 완료</p>
+      ${filteredPeople.length
+        ? `<section class="person-grid" aria-label="성경 인물 목록">
+            ${filteredPeople.map((person) => {
+              const learned = progress.learned.includes(person.id);
+              return `<article class="person-card">
+                <div class="person-card-topline"><span class="category-pill">${escapeHtml(person.testament || "성경 인물")}</span><span class="person-learn-state">${learned ? "학습 완료" : "아직 학습 전"}</span></div>
+                <h2>${escapeHtml(person.term)}</h2>
+                <p>${escapeHtml(person.definition)}</p>
+                <details class="person-verse">
+                  <summary>대표 구절 <span>${escapeHtml(person.reference)}</span></summary>
+                  <blockquote>${escapeHtml(person.verse)}</blockquote>
+                </details>
+                <button class="${learned ? "secondary-button" : "primary-button"} person-learn-button" type="button" data-person-learn="${person.id}" ${learned ? "disabled" : ""}>${learned ? "학습 완료" : "오늘 배웠어요"}</button>
+              </article>`;
+            }).join("")}
+          </section>`
+        : `<p class="person-empty-state">검색한 인물을 찾지 못했어요.</p>`}`;
+
+    document.querySelectorAll("[data-person-testament]").forEach((button) => {
+      button.addEventListener("click", () => {
+        activePersonTestament = button.dataset.personTestament;
+        renderPeople();
+      });
+    });
+    document.querySelector("#person-search").addEventListener("input", (event) => {
+      const input = event.currentTarget;
+      const cursor = input.selectionStart;
+      personSearchQuery = input.value;
+      renderPeople();
+      const nextInput = document.querySelector("#person-search");
+      nextInput.focus();
+      nextInput.setSelectionRange(cursor, cursor);
+    });
+    document.querySelectorAll("[data-person-learn]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const person = people.find((item) => item.id === Number(button.dataset.personLearn));
+        if (!person) return;
+        markLearned(person);
+        showToast(`‘${person.term}’ 인물 학습을 기록했어요.`);
+        renderPeople();
+      });
     });
   }
 
@@ -1243,7 +1313,7 @@
       .filter((word, index, items) => items.findIndex((item) => item.id === word.id) === index)
       .filter((word) => {
         const length = [...word.term.replaceAll(" ", "")].length;
-        return length >= 2 && length <= 4;
+        return length >= 2 && length <= 5;
       });
     let best = null;
 

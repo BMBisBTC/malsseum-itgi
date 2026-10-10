@@ -1,4 +1,4 @@
-const CACHE_NAME = "malsseum-itgi-v8";
+const CACHE_NAME = "malsseum-itgi-v10";
 const CORE_ASSETS = [
   "./",
   "./index.html",
